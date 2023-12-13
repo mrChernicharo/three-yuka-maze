@@ -4,6 +4,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { Quaternion } from "yuka";
 import { createGraphHelper } from "./GraphHelper.js";
+import { createConvexRegionHelper } from "./NavMeshHelper.js";
 
 console.log({ THREE, YUKA });
 
@@ -81,7 +82,9 @@ async function drawMapAndNavMesh() {
   scene.add(graphHelper);
 
   console.log(navMeshLoader, navMesh);
-  // createGraphHelper
+
+  const convexRegHelper = createConvexRegionHelper(navMesh);
+  scene.add(convexRegHelper);
 
   console.log({ glb, levelMap });
 }
@@ -139,6 +142,8 @@ function setupDomListeners() {
     mouseClickPos.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
     mouseRay.setFromCamera(mouseClickPos, camera);
+
+    console.log(mouseRay);
   });
 }
 
