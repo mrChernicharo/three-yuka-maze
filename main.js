@@ -2,7 +2,6 @@ import * as THREE from "three";
 import * as YUKA from "yuka";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
-import { Quaternion } from "yuka";
 import { createGraphHelper } from "./GraphHelper.js";
 import { createConvexRegionHelper } from "./NavMeshHelper.js";
 
@@ -24,17 +23,18 @@ let graphHelper;
 let navMeshHelper; // convexRegionHelper
 let agentVehicles = [];
 let agentMeshes = [];
+let paths = [];
 
 const agentBlueprints = [
-  { speed: 10, pos: new THREE.Vector3(19, 1.5, 18.5), color: 0x00ff00, spawnAt: 0 },
+  { speed: 8, pos: new THREE.Vector3(19, 1.5, 18.5), color: 0x00ff00, spawnAt: 0 },
   // { speed: 8, pos: new THREE.Vector3(19, 1.5, 17), color: 0xff0000, spawnAt: 2 },
   // { speed: 10, pos: new THREE.Vector3(17, 1.5, 18.5), color: 0x00ff00, spawnAt: 4 },
   // { speed: 10, pos: new THREE.Vector3(16, 1.5, 18.5), color: 0x00ff00, spawnAt: 6 },
   // { speed: 10, pos: new THREE.Vector3(16, 1.5, 17), color: 0x00ff00, spawnAt: 8 },
   // { speed: 8, pos: new THREE.Vector3(18.5, 1.5, 16), color: 0xff0000, spawnAt: 10 },
   // { speed: 10, pos: new THREE.Vector3(17, 1.5, 17), color: 0x00ff00, spawnAt: 12 },
-  { speed: 5, pos: new THREE.Vector3(-18, 1.5, 18), color: 0xff0000, spawnAt: 2 },
-  // { speed: 20, pos: new THREE.Vector3(-18, 1.5, -18), color: 0x0000ff, spawnAt: 5 },
+  { speed: 12, pos: new THREE.Vector3(-18, 1.5, 18), color: 0xff0000, spawnAt: 2 },
+  { speed: 16, pos: new THREE.Vector3(-18, 1.5, -18), color: 0x0000ff, spawnAt: 5 },
 ];
 
 function init() {
@@ -83,9 +83,10 @@ async function drawMapAndNavMesh() {
 
   const graph = navMesh.graph;
   graphHelper = createGraphHelper(graph, 0.2);
-  scene.add(graphHelper);
+  // scene.add(graphHelper);
 
   navMeshHelper = createConvexRegionHelper(navMesh);
+  navMeshHelper.material = new THREE.MeshBasicMaterial({ transparent: true, color: 0x0055dd, opacity: 0.2 });
   scene.add(navMeshHelper);
 
   console.log({ glb, levelMap, navMeshLoader, navMesh });
@@ -93,8 +94,8 @@ async function drawMapAndNavMesh() {
 
 function drawAgents() {
   const agentRadius = 0.25;
-  const agentHeight = 1;
-  const agentGeometry = new THREE.CylinderGeometry(agentRadius, 0, agentHeight);
+  const agentHeight = 2;
+  const agentGeometry = new THREE.CylinderGeometry(0, agentRadius, agentHeight);
 
   for (let i = 0; i < agentBlueprints.length; i++) {
     const agent = agentBlueprints[i];
@@ -106,8 +107,10 @@ function drawAgents() {
     const agentVehicle = new YUKA.Vehicle();
     agentVehicle.name = "Agent Vehicle";
     agentVehicle.boundingRadius = agentGeometry.boundingSphere;
-    agentVehicle.maxSpeed = 12;
+    agentVehicle.maxSpeed = agent.speed;
     agentVehicle.mass = 0.5;
+    agentVehicle.neighborhoodRadius = 1;
+    agentVehicle.updateNeighborhood = true;
     agentVehicle.setRenderComponent(agentMesh, (entity, renderComponent) => {
       renderComponent.matrix.copy(entity.worldMatrix);
     });
@@ -115,8 +118,12 @@ function drawAgents() {
 
     const followPathBehavior = new YUKA.FollowPathBehavior();
     followPathBehavior.active = false;
-    followPathBehavior.nextWaypointDistance = 1;
+    followPathBehavior.nextWaypointDistance = 2;
     agentVehicle.steering.add(followPathBehavior);
+
+    const separationBehavior = new YUKA.SeparationBehavior();
+    agentVehicle.steering.add(separationBehavior);
+    separationBehavior.weight = 1;
 
     scene.add(agentMesh);
     entityManager.add(agentVehicle);
@@ -143,47 +150,52 @@ function setupDomListeners() {
 
     const intersects = mouseRay.intersectObject(navMeshHelper);
 
-    console.log(intersects);
+    console.log({ intersects });
 
     if (intersects.length > 0) {
-      entityManager.entities.forEach((entity, i) => {
+      entityManager.entities.forEach((entity, i, arr) => {
         const agentVehicle = agentVehicles[i];
         const path = findPathTo(agentVehicle.position, new YUKA.Vector3().copy(intersects[0].point));
 
-        const followPathBehavior = agentVehicle.steering.behaviors[0];
-        followPathBehavior.path.clear();
-        followPathBehavior.active = true;
-        for (const point of path) {
-          followPathBehavior.path.add(point);
-        }
-        console.log(agentVehicle, path, followPathBehavior);
-      });
+        if (path.length) {
+          const followPathBehavior = agentVehicle.steering.behaviors[0];
+          followPathBehavior.path.clear();
+          followPathBehavior.active = true;
+          for (const point of path) {
+            followPathBehavior.path.add(point);
+          }
+          paths[i] = path;
 
-      function findPathTo(from, to) {
-        return navMesh.findPath(from, to);
-      }
+          path.current && agentVehicle.position.copy(path.current());
+          path.current && agentMeshes[i].lookAt(path.current());
+          agentVehicle.rotation.z = Math.PI / 2;
+
+          console.log({ agentVehicle, agentMesh: agentMeshes[i], path, followPathBehavior, paths });
+        }
+      });
     }
   });
+}
+
+function findPathTo(from, to) {
+  try {
+    const path = navMesh.findPath(from, to);
+    return path;
+  } catch (err) {
+    console.log({ err });
+    return null;
+  }
 }
 
 function animate() {
   orbit.update();
 
-  // agentVehicles.forEach((v) => {
-  // console.log(v.steering.behaviors[0]);
-  // v.position.copy(followPathBehavior.path.current());
-  // });
-  // console.log(agentVehicles[0].position);
+  const delta = time.update().getDelta();
   agentVehicles.forEach((v, i) => {
     agentMeshes[i].position.copy(v.position);
-    // agentVehicle.position.copy(path.current());
-    // agentVehicle.rotation.copy(new Quaternion(agentMesh.quaternion));
   });
-  const delta = time.update().getDelta();
   entityManager.update(delta);
   renderer.render(scene, camera);
-
-  // requestAnimationFrame(animate);
 }
 
 function main() {
@@ -195,7 +207,6 @@ function main() {
 
   drawAgents();
 
-  // requestAnimationFrame(animate);
   renderer.setAnimationLoop(animate);
 }
 
