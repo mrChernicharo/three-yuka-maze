@@ -27,14 +27,14 @@ let paths = [];
 
 const agentBlueprints = [
   { speed: 8, pos: new THREE.Vector3(19, 1.5, 18.5), color: 0x00ff00, spawnAt: 0 },
-  // { speed: 8, pos: new THREE.Vector3(19, 1.5, 17), color: 0xff0000, spawnAt: 2 },
-  // { speed: 10, pos: new THREE.Vector3(17, 1.5, 18.5), color: 0x00ff00, spawnAt: 4 },
-  // { speed: 10, pos: new THREE.Vector3(16, 1.5, 18.5), color: 0x00ff00, spawnAt: 6 },
-  // { speed: 10, pos: new THREE.Vector3(16, 1.5, 17), color: 0x00ff00, spawnAt: 8 },
-  // { speed: 8, pos: new THREE.Vector3(18.5, 1.5, 16), color: 0xff0000, spawnAt: 10 },
-  // { speed: 10, pos: new THREE.Vector3(17, 1.5, 17), color: 0x00ff00, spawnAt: 12 },
-  { speed: 12, pos: new THREE.Vector3(-18, 1.5, 18), color: 0xff0000, spawnAt: 2 },
-  { speed: 16, pos: new THREE.Vector3(-18, 1.5, -18), color: 0x0000ff, spawnAt: 5 },
+  { speed: 8, pos: new THREE.Vector3(19, 1.5, 17), color: 0xff8800, spawnAt: 2 },
+  { speed: 10, pos: new THREE.Vector3(17, 1.5, 18.5), color: 0x88ffaa, spawnAt: 4 },
+  { speed: 10, pos: new THREE.Vector3(16, 1.5, 18.5), color: 0x00ff88, spawnAt: 6 },
+  { speed: 10, pos: new THREE.Vector3(16, 1.5, 17), color: 0x88ff00, spawnAt: 8 },
+  { speed: 8, pos: new THREE.Vector3(18.5, 1.5, 16), color: 0xff0000, spawnAt: 10 },
+  { speed: 10, pos: new THREE.Vector3(17, 1.5, 17), color: 0x00ffff, spawnAt: 12 },
+  { speed: 12, pos: new THREE.Vector3(-18, 1.5, 18), color: 0xffff00, spawnAt: 2 },
+  { speed: 16, pos: new THREE.Vector3(-18, 1.5, -18), color: 0xa000ff, spawnAt: 5 },
 ];
 
 function init() {
@@ -87,7 +87,7 @@ async function drawMapAndNavMesh() {
 
   navMeshHelper = createConvexRegionHelper(navMesh);
   navMeshHelper.material = new THREE.MeshBasicMaterial({ transparent: true, color: 0x0055dd, opacity: 0.2 });
-  scene.add(navMeshHelper);
+  // scene.add(navMeshHelper);
 
   console.log({ glb, levelMap, navMeshLoader, navMesh });
 }
@@ -96,6 +96,7 @@ function drawAgents() {
   const agentRadius = 0.25;
   const agentHeight = 2;
   const agentGeometry = new THREE.CylinderGeometry(0, agentRadius, agentHeight);
+  agentGeometry.rotateX(Math.PI / 2);
 
   for (let i = 0; i < agentBlueprints.length; i++) {
     const agent = agentBlueprints[i];
@@ -103,6 +104,8 @@ function drawAgents() {
     const agentMesh = new THREE.Mesh(agentGeometry, agentMaterial);
     agentMesh.name = "Agent Mesh";
     agentMesh.position.set(agent.pos.x, agent.pos.y, agent.pos.z);
+    // agentMesh.setRotationFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+    // agentMesh.rotateOnAxis(new THREE.Vector3(0, 0, 1), Math.PI / 2);
 
     const agentVehicle = new YUKA.Vehicle();
     agentVehicle.name = "Agent Vehicle";
@@ -135,7 +138,7 @@ function drawAgents() {
 function setupDomListeners() {
   window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;
-    console.log(camera);
+    console.log({ camera });
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
@@ -153,6 +156,7 @@ function setupDomListeners() {
     console.log({ intersects });
 
     if (intersects.length > 0) {
+      paths = [];
       entityManager.entities.forEach((entity, i, arr) => {
         const agentVehicle = agentVehicles[i];
         const path = findPathTo(agentVehicle.position, new YUKA.Vector3().copy(intersects[0].point));
@@ -164,11 +168,9 @@ function setupDomListeners() {
           for (const point of path) {
             followPathBehavior.path.add(point);
           }
-          paths[i] = path;
-
+          paths.push(followPathBehavior.path);
           path.current && agentVehicle.position.copy(path.current());
           path.current && agentMeshes[i].lookAt(path.current());
-          agentVehicle.rotation.z = Math.PI / 2;
 
           console.log({ agentVehicle, agentMesh: agentMeshes[i], path, followPathBehavior, paths });
         }
@@ -182,7 +184,6 @@ function findPathTo(from, to) {
     const path = navMesh.findPath(from, to);
     return path;
   } catch (err) {
-    console.log({ err });
     return null;
   }
 }
@@ -193,6 +194,10 @@ function animate() {
   const delta = time.update().getDelta();
   agentVehicles.forEach((v, i) => {
     agentMeshes[i].position.copy(v.position);
+    if (paths[i]) {
+      const target = paths[i].current();
+      agentMeshes[i].lookAt(target.x, target.y, target.z);
+    }
   });
   entityManager.update(delta);
   renderer.render(scene, camera);
