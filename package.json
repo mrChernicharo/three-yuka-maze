@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "three": "^0.159.0",
+    "three-pathfinding": "^1.2.0",
     "yuka": "^0.7.8"
   }
 }
